@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jack's Name Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f0f9ff; /* Light blue background */
+            color: #1e3a8a; /* Dark blue text */
+            touch-action: none; /* Prevent default touch actions like scrolling */
+        }
+        .letter-card {
+            width: 80px;
+            height: 100px;
+            background-color: #ffffff; /* White card */
+            border: 2px solid #3b82f6; /* Blue border */
+            border-radius: 12px; /* More rounded corners */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem; /* Larger font for letters */
+            font-weight: bold;
+            color: #1e3a8a; /* Dark blue letter */
+            cursor: grab;
+            user-select: none; /* Prevent text selection */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .letter-card:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+        .drop-zone {
+            width: 90px;
+            height: 110px;
+            background-color: #dbeafe; /* Lighter blue for drop zone */
+            border: 2px dashed #60a5fa; /* Dashed blue border */
+            border-radius: 12px; /* More rounded corners */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 5px;
+            transition: background-color 0.2s ease;
+        }
+        .drop-zone.over {
+            background-color: #bfdbfe; /* Even lighter blue when dragging over */
+        }
+        .drop-zone.filled .letter-card {
+            cursor: default; /* No grab cursor once placed */
+        }
+        .button {
+            background-color: #2563eb; /* Vibrant blue button */
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px; /* More rounded corners */
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .button:hover {
+            background-color: #1d4ed8; /* Darker blue on hover */
+        }
+        .message-box {
+            min-height: 50px; /* Ensure space for message */
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        .success {
+            background-color: #dcfce7; /* Green for success */
+            color: #166534;
+            border: 1px solid #4ade80;
+        }
+        .error {
+            background-color: #fee2e2; /* Red for error */
+            color: #991b1b;
+            border: 1px solid #f87171;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        /* Ensure visibility of dragged item */
+        .dragging {
+            opacity: 0.7;
+            transform: rotate(5deg) scale(1.1);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container text-center">
+        <h1 class="text-4xl font-bold mb-8 text-blue-700">Spell Your Name, Jack!</h1>
+
+        <div id="scrambled-letters" class="flex justify-center space-x-3 mb-10">
+            </div>
+
+        <div class="flex justify-center mb-10">
+            <div class="drop-zone" data-letter-index="0"></div>
+            <div class="drop-zone" data-letter-index="1"></div>
+            <div class="drop-zone" data-letter-index="2"></div>
+            <div class="drop-zone" data-letter-index="3"></div>
+        </div>
+
+        <button id="check-button" class="button mb-4">Check My Name!</button>
+        <button id="reset-button" class="button bg-amber-500 hover:bg-amber-600 ml-2 mb-4">Start Over</button>
+        <div id="message-area" class="message-box"></div>
+    </div>
+
+    <script>
+        const nameToSpell = "JACK";
+        const scrambledLettersContainer = document.getElementById('scrambled-letters');
+        const dropZones = document.querySelectorAll('.drop-zone');
+        const checkButton = document.getElementById('check-button');
+        const resetButton = document.getElementById('reset-button');
+        const messageArea = document.getElementById('message-area');
+
+        let draggedLetter = null; // To store the element being dragged
+        let preferredVoice = null; // To store the selected voice
+        let voices = []; // To store available voices
+
+        // Function to populate voices and select a preferred one
+        function loadVoices() {
+            voices = window.speechSynthesis.getVoices();
+            // Try to find a non-default, English (US or UK) voice that is local
+            preferredVoice = voices.find(voice => voice.lang.startsWith('en-') && !voice.default && voice.localService);
+            if (!preferredVoice) { // Fallback: try any non-default English voice
+                preferredVoice = voices.find(voice => voice.lang.startsWith('en-') && !voice.default);
+            }
+            if (!preferredVoice) { // Fallback: try any local English voice
+                preferredVoice = voices.find(voice => voice.lang.startsWith('en-') && voice.localService);
+            }
+            if (!preferredVoice && voices.length > 0) { // Fallback: any English voice
+                 preferredVoice = voices.find(voice => voice.lang.startsWith('en-'));
+            }
+            // If still no preferred voice, the system default will be used by the browser.
+            // console.log("Available voices:", voices);
+            // console.log("Preferred voice:", preferredVoice);
+        }
+
+
+        // Function to shuffle an array (Fisher-Yates shuffle)
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]]; // Swap elements
+            }
+            return array;
+        }
+
+        // Function to create and display letter cards
+        function initializeGame() {
+            scrambledLettersContainer.innerHTML = '';
+            dropZones.forEach(zone => {
+                zone.innerHTML = '';
+                zone.classList.remove('filled');
+            });
+            messageArea.textContent = '';
+            messageArea.className = 'message-box';
+
+            const letters = nameToSpell.split('');
+            const shuffledLetters = shuffleArray([...letters]);
+
+            shuffledLetters.forEach(letter => {
+                const letterCard = document.createElement('div');
+                letterCard.classList.add('letter-card');
+                letterCard.textContent = letter;
+                letterCard.draggable = true;
+
+                letterCard.addEventListener('touchstart', handleDragStart, { passive: false });
+                letterCard.addEventListener('touchmove', handleDragMove, { passive: false });
+                letterCard.addEventListener('touchend', handleDragEnd);
+                letterCard.addEventListener('dragstart', handleDragStart);
+                letterCard.addEventListener('dragend', handleDragEndVisuals);
+                scrambledLettersContainer.appendChild(letterCard);
+            });
+        }
+
+        // --- Drag and Drop Event Handlers ---
+        function handleDragStart(event) {
+            draggedLetter = event.target;
+            setTimeout(() => {
+                 if(draggedLetter) draggedLetter.classList.add('dragging');
+            }, 0);
+
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', draggedLetter.textContent);
+            }
+            if (event.type === 'touchstart') {
+                event.preventDefault();
+                // Calculate offset from the container for more accurate positioning
+                const sContainerRect = scrambledLettersContainer.getBoundingClientRect();
+                const letterRect = draggedLetter.getBoundingClientRect();
+
+                draggedLetter.initialX = event.touches[0].clientX - (letterRect.left - sContainerRect.left);
+                draggedLetter.initialY = event.touches[0].clientY - (letterRect.top - sContainerRect.top);
+
+
+                const clone = draggedLetter.cloneNode(true);
+                clone.style.position = 'absolute';
+                clone.style.zIndex = '1000';
+                // Position clone at touch point initially
+                clone.style.left = (event.touches[0].clientX - draggedLetter.initialX) + 'px';
+                clone.style.top = (event.touches[0].clientY - draggedLetter.initialY) + 'px';
+
+                document.body.appendChild(clone);
+                draggedLetter.style.opacity = '0.4';
+                draggedLetter.clone = clone;
+            }
+        }
+
+        function handleDragMove(event) {
+            if (event.type === 'touchmove' && draggedLetter && draggedLetter.clone) {
+                event.preventDefault();
+                let xPos = event.touches[0].clientX - draggedLetter.initialX;
+                let yPos = event.touches[0].clientY - draggedLetter.initialY;
+
+                draggedLetter.clone.style.left = xPos + 'px';
+                draggedLetter.clone.style.top = yPos + 'px';
+
+                dropZones.forEach(zone => {
+                    const rect = zone.getBoundingClientRect();
+                    if (event.touches[0].clientX > rect.left && event.touches[0].clientX < rect.right &&
+                        event.touches[0].clientY > rect.top && event.touches[0].clientY < rect.bottom) {
+                        zone.classList.add('over');
+                    } else {
+                        zone.classList.remove('over');
+                    }
+                });
+            }
+        }
+
+        function handleDragEnd(event) {
+            if (!draggedLetter) return;
+
+            if (event.type === 'touchend') {
+                if (draggedLetter.clone) {
+                    draggedLetter.clone.remove();
+                    draggedLetter.style.opacity = '1';
+                    draggedLetter.clone = null; // Clear the clone reference
+                }
+
+                let droppedOnZone = null;
+                const touch = event.changedTouches[0];
+                dropZones.forEach(zone => {
+                    const rect = zone.getBoundingClientRect();
+                    if (touch.clientX > rect.left && touch.clientX < rect.right &&
+                        touch.clientY > rect.top && touch.clientY < rect.bottom) {
+                        droppedOnZone = zone;
+                    }
+                    zone.classList.remove('over');
+                });
+
+                if (droppedOnZone) {
+                    handleDrop({ target: droppedOnZone, preventDefault: () => {} });
+                } else {
+                    // If not dropped on a zone, and it's a touch event,
+                    // the letter might have been moved from its original spot.
+                    // We need to ensure it's either in a drop zone or back in scrambled.
+                    // If it's not in a drop zone, and its parent isn't scrambledLettersContainer, put it back.
+                    if (!draggedLetter.parentElement.classList.contains('drop-zone') && draggedLetter.parentElement !== scrambledLettersContainer) {
+                        scrambledLettersContainer.appendChild(draggedLetter);
+                    }
+                }
+            }
+            handleDragEndVisuals();
+        }
+
+        function handleDragEndVisuals() {
+            if (draggedLetter) {
+                draggedLetter.classList.remove('dragging');
+                if (draggedLetter.clone) { // Clean up clone if drag ended prematurely (e.g., mouse dragend)
+                    draggedLetter.clone.remove();
+                    draggedLetter.style.opacity = '1';
+                    draggedLetter.clone = null;
+                }
+            }
+            // draggedLetter is reset in handleDrop or if not dropped in touchend
+        }
+
+        dropZones.forEach(zone => {
+            zone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                zone.classList.add('over');
+            });
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('over');
+            });
+            zone.addEventListener('drop', handleDrop);
+        });
+
+        function handleDrop(event) {
+            event.preventDefault();
+            const dropZone = event.target.closest('.drop-zone');
+
+            if (!draggedLetter) return; // If no letter was being dragged (e.g. after a reset mid-drag)
+
+            if (dropZone && !dropZone.classList.contains('filled')) {
+                // If the dragged letter came from another drop zone, clear that zone
+                if (draggedLetter.parentElement.classList.contains('drop-zone')) {
+                    draggedLetter.parentElement.classList.remove('filled');
+                    draggedLetter.parentElement.innerHTML = ''; // Clear the old zone
+                }
+                dropZone.appendChild(draggedLetter);
+                dropZone.classList.add('filled');
+            } else if (dropZone && dropZone.classList.contains('filled') && dropZone.children[0] !== draggedLetter) {
+                const existingLetterCard = dropZone.children[0];
+                const originContainer = draggedLetter.parentElement;
+
+                // Move existing letter from target dropzone to the origin of the dragged letter
+                if (originContainer.classList.contains('drop-zone')) { // From another drop zone
+                    originContainer.appendChild(existingLetterCard); // existingLetterCard goes to origin dropZone
+                    // originContainer remains 'filled'
+                } else { // From scrambled area
+                    scrambledLettersContainer.appendChild(existingLetterCard); // existingLetterCard goes to scrambled
+                }
+                dropZone.appendChild(draggedLetter); // draggedLetter goes to target dropZone
+            }
+
+            if(dropZone) dropZone.classList.remove('over');
+            if(draggedLetter) draggedLetter.classList.remove('dragging');
+            draggedLetter = null; // Critical: reset draggedLetter after handling the drop
+        }
+
+        // Function to speak a message
+        function speakMessage(message) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Cancel any ongoing speech
+                const utterance = new SpeechSynthesisUtterance(message);
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                }
+                // You can also adjust pitch and rate if desired
+                // utterance.pitch = 1.2; // Example: slightly higher pitch
+                // utterance.rate = 0.9; // Example: slightly slower rate
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.log("Sorry, your browser does not support text to speech!");
+                // Fallback: display message prominently if speech is not supported
+                messageArea.textContent = message + " (Audio not supported)";
+                messageArea.classList.add('error'); // Or a neutral class
+            }
+        }
+
+        checkButton.addEventListener('click', () => {
+            let assembledName = "";
+            let allZonesFilled = true;
+            dropZones.forEach(zone => {
+                if (zone.children.length > 0 && zone.children[0].classList.contains('letter-card')) {
+                    assembledName += zone.children[0].textContent;
+                } else {
+                    allZonesFilled = false;
+                }
+            });
+
+            messageArea.textContent = '';
+            messageArea.className = 'message-box';
+
+            if (!allZonesFilled) {
+                const msg = "Please fill all the boxes!";
+                messageArea.textContent = msg;
+                messageArea.classList.add('error');
+                return;
+            }
+
+            if (assembledName === nameToSpell) {
+                const successMsg = "Good thinking, Jack! You spelled your name!"; // Updated message
+                messageArea.textContent = "🎉 " + successMsg + " 🎉";
+                messageArea.classList.add('success');
+                speakMessage(successMsg);
+
+                dropZones.forEach((zone, index) => {
+                    setTimeout(() => {
+                        if(zone.children[0]) {
+                            zone.children[0].style.transform = 'scale(1.2) rotate(5deg)';
+                            setTimeout(() => {
+                               if(zone.children[0]) zone.children[0].style.transform = 'scale(1) rotate(0deg)';
+                            }, 200);
+                        }
+                    }, index * 100);
+                });
+            } else {
+                const errorMsg = "Not quite, try again!";
+                messageArea.textContent = errorMsg;
+                messageArea.classList.add('error');
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            window.speechSynthesis.cancel();
+            initializeGame();
+        });
+
+        // Initialize voices and game
+        window.onload = () => {
+            if ('speechSynthesis' in window) {
+                // Voices are often loaded asynchronously.
+                // Listen for the 'voiceschanged' event to make sure voices are available.
+                if (speechSynthesis.onvoiceschanged !== undefined) {
+                    speechSynthesis.onvoiceschanged = loadVoices;
+                }
+                loadVoices(); // Attempt to load them immediately too
+            }
+            initializeGame();
+        };
+    </script>
+
+</body>
+</html>
